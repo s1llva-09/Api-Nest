@@ -18,7 +18,7 @@ import { CategoriasModule } from './categorias/categorias.module';
     }),
 
     //conecta a aplicação ao mongoDB usado a URL salva no .env
-    MongooseModule.forRoot(process.env.MONGODB_URL as string),
+    MongooseModule.forRoot(process.env.MONGODB_URI as string),
 
     //importa o modulo de categorias para a aplicação principal
     CategoriasModule,
