@@ -3,113 +3,100 @@
 //Criar categoria, listar categorias, buscar categorias por id, atualizar categorias e deletar categorias
 
 
-// Importa o Injectable para informar ao NestJS que essa classe pode ser injetada em outros lugares.
-// Importa o NotFoundException para retornar erro 404 quando uma categoria não for encontrada.
+// Importa Injectable e NotFoundException do NestJS.
+// Injectable permite que essa classe seja usada como service.
+// NotFoundException retorna erro 404 quando algo não é encontrado.
 import { Injectable, NotFoundException } from '@nestjs/common';
 
-// Importa o DTO usado quando uma nova categoria for criada.
+// Importa InjectModel para injetar o model do Mongoose dentro do service.
+import { InjectModel } from '@nestjs/mongoose';
+
+// Importa Model, que representa o model do Mongoose usado para acessar o banco.
+import { Model } from 'mongoose';
+
+// Importa o DTO usado para criar categoria.
 import { CreateCategoriaDto } from './dto/create-categoria.dto';
 
-// Importa o DTO usado quando uma categoria for atualizada.
+// Importa o DTO usado para atualizar categoria.
 import { UpdateCategoriaDto } from './dto/update-categoria.dto';
 
-// Importa a entidade Categoria, que representa o formato completo de uma categoria.
-import { Categoria } from './entities/categoria.entity';
+// Importa a classe Categoria e o tipo CategoriaDocument do schema.
+import {
+  Categoria,
+  CategoriaDocument,
+} from './entities/categoria.schema';
 
-
-//o decorator @Injectable() diz para o NestJS que essa classe é um serviço
-//Um service é onde colocamos a logica da aplicação
 @Injectable()
 export class CategoriasService {
-  //aqui criamos uma lista vazia de categorias
-  //essa lista vai funcionar como um "banco de dados temporario"
-  //enquanto o servidor estiver ligado, os dados ficam salvos aqui
-  //se parar o servidor, os dados somem
-  private categorias: Categoria[] = [];
+  // O constructor injeta o model Categoria do Mongoose.
+  // Esse model permite criar, listar, buscar, atualizar e deletar no MongoDB.
+  constructor(
+    @InjectModel(Categoria.name)
+    private categoriaModel: Model<CategoriaDocument>,
+  ) {}
 
-  //Método responsável por criar uma nova categoria
-  //Ele recebe os dados enviados pelo usuário através do CreateCategoriaDto
-  create(createCategoriaDto: CreateCategoriaDto) {
-    //criamos uma nova categoria com o formato de entidade Categoria
-    const novaCategoria: Categoria = {
-      //Date.now() gera um número baseado na data/hora atual
-      //toString() transforma esse número em texto
-      //Isso será usado como id temporário da categoria
-      id: Date.now().toString(),
+  // Cria uma nova categoria no MongoDB.
+  async create(createCategoriaDto: CreateCategoriaDto) {
+    // Cria uma nova instância do model com os dados recebidos no body.
+    const novaCategoria = new this.categoriaModel(createCategoriaDto);
 
-      //o nome vem do corpo da requisição
-      //Exemplo: { "nome": "Eletronico "}
-      nome: createCategoriaDto.nome,
+    // Salva a categoria no banco de dados.
+    const categoriaSalva = await novaCategoria.save();
 
-      // O ativo também vem do corpo da requisição
-      // Exempl: { "ativo": true }
-      ativo: createCategoriaDto.ativo
-    };
-
-    //Adiciona a nova categoria dentro da lista de categorias
-    this.categorias.push(novaCategoria)
-
-    // Retornas uma reposta para quem chamou a API
+    // Retorna uma mensagem e a categoria salva.
     return {
-      mensagem: 'Categoria criada com sucesso',
-      categoria: novaCategoria,
-    }
+      mensagem: 'Categoria criada com sucesso!',
+      categoria: categoriaSalva,
+    };
   }
 
-  //Metodo responsavel por listar todas as categorias cadastradas
-  findAll() {
-    //retornar a lista completa de categorias
-    return this.categorias
+  // Lista todas as categorias salvas no MongoDB.
+  async findAll() {
+    return this.categoriaModel.find().exec();
   }
 
-  //Método responsavel por buscar uma categoria especifica pelo id
-  findOne(id: string) {
-    //Procura dentro da lista uma categoria cujo id seja igual ao id recebido
-    const categoria = this.categorias.find((item) => item.id === id)
+  // Busca uma categoria pelo id do MongoDB.
+  async findOne(id: string) {
+    const categoria = await this.categoriaModel.findById(id).exec();
 
-    // Se não encontrar nenhuma categoria, retorna um erro 404
     if (!categoria) {
-      throw new NotFoundException('Categoria não encontrada')
+      throw new NotFoundException('Categoria não encontrada.');
     }
 
-    //se encontrar, retorna a categoria encontrada
     return categoria;
   }
 
-  //Metodo responsavel por atualizar uma categoria existente
-  //Recebe o id da categoria e novos dados enviados pelo usuario
-  update(id: string, updateCategoriaDto: UpdateCategoriaDto) {
-    //Primeiro tenta encontrar a categoria pelo id
-    //Se não encontrar, o próprio findOne já lança erro 404
-    const categoria = this.findOne(id)
+  // Atualiza uma categoria pelo id.
+  async update(id: string, updateCategoriaDto: UpdateCategoriaDto) {
+    const categoriaAtualizada = await this.categoriaModel
+      .findByIdAndUpdate(id, updateCategoriaDto, {
+        new: true,
+      })
+      .exec();
 
-    //Object.assign copia os dados novos para dentro da categoria encontrada
-    //se o usuario mandar so o nome, atualiza so o nome
-    //se mnadar so o ativo, atualiza so o ativo
-    Object.assign(categoria, UpdateCategoriaDto)
+    if (!categoriaAtualizada) {
+      throw new NotFoundException('Categoria não encontrada.');
+    }
 
-    //Retorna unma resposta dizendo que atualizou com sucesso
     return {
       mensagem: 'Categoria atualizada com sucesso!',
-      categoria,
-    }
+      categoria: categoriaAtualizada,
+    };
   }
 
-  //Metodo resposnavel por remover uma categoria
-  remove(id: string) {
-    //primeiro verifica se a categoria existe
-    //se nao existir, o findOnde lanã erro 404
+  // Remove uma categoria pelo id.
+  async remove(id: string) {
+    const categoriaRemovida = await this.categoriaModel
+      .findByIdAndDelete(id)
+      .exec();
 
-    const categoria = this.findOne(id)
-
-    //Cria uma nova lista removendo a categoria que tem o id informado
-    //o filter mentem apenas os itens cujo id seja diferente do id recebido
-    this.categorias = this.categorias.filter((item) => item.id !== id)
-
-    //retorna uma resposta dizendo que removeu com sucesso
-    return {
-      mensagem: 'Categoria removida com sucesso',
-      categoria,
+    if (!categoriaRemovida) {
+      throw new NotFoundException('Categoria não encontrada.');
     }
+
+    return {
+      mensagem: 'Categoria removida com sucesso!',
+      categoria: categoriaRemovida,
+    };
   }
 }
